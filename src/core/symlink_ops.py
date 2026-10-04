@@ -183,8 +183,8 @@ def create_junction(target: str, link_name: str) -> Tuple[bool, str]:
     except Exception as e:
         # Fallback to cmd mklink /J
         try:
-            cmd = f'cmd /c mklink /J "{os.path.abspath(link_name)}" "{target_abs}"'
-            proc = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            cmd = ["cmd.exe", "/c", "mklink", "/J", os.path.abspath(link_name), target_abs]
+            proc = subprocess.run(cmd, capture_output=True, text=True)
             if proc.returncode == 0:
                 return True, f"Successfully created directory junction to '{os.path.basename(target_abs)}'."
             return False, f"mklink /J failed: {proc.stderr.strip() or proc.stdout.strip()}"

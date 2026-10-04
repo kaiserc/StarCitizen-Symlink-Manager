@@ -43,9 +43,9 @@ def parse_build_manifest(channel_dir: str) -> Dict[str, str]:
 def get_fast_directory_size_gb(dir_path: str) -> float:
     """
     Fast estimation of Star Citizen directory size.
-    Data.p4k comprises ~90% of Star Citizen's disk footprint.
-    We check Data.p4k size directly, plus add ~5-10GB for binaries/other files,
-    or sum top-level file/dir sizes for high accuracy and fast speed.
+    Data.p4k comprises ~90-95% of Star Citizen's disk footprint.
+    We check Data.p4k size directly and sample top-level folders (Bin64, Engine, etc.)
+    without doing an unbounded recursive disk walk on cold drives.
     """
     if not os.path.isdir(dir_path):
         return 0.0
@@ -54,15 +54,23 @@ def get_fast_directory_size_gb(dir_path: str) -> float:
     total_bytes = 0
 
     try:
-        # If Data.p4k exists, get its exact size
         if os.path.isfile(p4k_path):
             total_bytes += os.path.getsize(p4k_path)
-
-        # Walk through top level and Bin64
-        for root, dirs, files in os.walk(dir_path):
-            # Skip recursing deeply into complex subtrees if already past 500 files
-            for f in files:
-                if f != "Data.p4k":
+            file_count = 0
+            for root, dirs, files in os.walk(dir_path):
+                file_count += len(files)
+                if file_count > 300:
+                    dirs.clear()  # Stop descending into deeper subtrees
+                for f in files:
+                    if f != "Data.p4k":
+                        fp = os.path.join(root, f)
+                        try:
+                            total_bytes += os.path.getsize(fp)
+                        except OSError:
+                            pass
+        else:
+            for root, dirs, files in os.walk(dir_path):
+                for f in files:
                     fp = os.path.join(root, f)
                     try:
                         total_bytes += os.path.getsize(fp)
