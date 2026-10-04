@@ -1,6 +1,10 @@
 # Star Citizen Symlink Manager 🚀
 ### Multi-Environment Storage Saver & Delta Patcher Companion
 
+<p align="center">
+  <img src="assets/ui/screenshot.png" width="800" alt="App Screenshot" />
+</p>
+
 A modern desktop application built for **Star Citizen** backers to install and play multiple release channels (**LIVE**, **PTU**, **EPTU**, **TECH-PREVIEW**, **HOTFIX**, **4.0_PREVIEW**) using the disk space of only a single installation.
 
 Inspired by the community guide on [r/starcitizen](https://www.reddit.com/r/starcitizen/comments/17lt803/howto_use_symbolic_links_to_install_multiple/).
