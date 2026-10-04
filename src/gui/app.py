@@ -757,10 +757,10 @@ Hover over any button, badge or metric in this app to see what it does.
             return
 
         self.console.log("[PRESET] Applying Reddit Method (Unified Game Base)...")
-        logs = apply_reddit_preset(self.sc_root, prefer_symlink=self.prefer_symlink)
-        for line in logs:
-            self.console.log(line)
-        self._refresh_all()
+        def task():
+            logs = apply_reddit_preset(self.sc_root, prefer_symlink=self.prefer_symlink)
+            self.after(0, lambda: self._on_preset_done(logs))
+        threading.Thread(target=task, daemon=True).start()
 
     def _apply_independent_preset(self):
         if not self.sc_root:
@@ -777,10 +777,10 @@ Hover over any button, badge or metric in this app to see what it does.
             return
 
         self.console.log("[PRESET] Applying Independent LIVE + Shared Test preset...")
-        logs = apply_independent_live_preset(self.sc_root, prefer_symlink=self.prefer_symlink)
-        for line in logs:
-            self.console.log(line)
-        self._refresh_all()
+        def task():
+            logs = apply_independent_live_preset(self.sc_root, prefer_symlink=self.prefer_symlink)
+            self.after(0, lambda: self._on_preset_done(logs))
+        threading.Thread(target=task, daemon=True).start()
 
     def _apply_direct_preset(self):
         if not self.sc_root:
@@ -796,7 +796,12 @@ Hover over any button, badge or metric in this app to see what it does.
             return
 
         self.console.log("[PRESET] Applying Direct Link to LIVE...")
-        logs = apply_direct_live_preset(self.sc_root, prefer_symlink=self.prefer_symlink)
+        def task():
+            logs = apply_direct_live_preset(self.sc_root, prefer_symlink=self.prefer_symlink)
+            self.after(0, lambda: self._on_preset_done(logs))
+        threading.Thread(target=task, daemon=True).start()
+
+    def _on_preset_done(self, logs):
         for line in logs:
             self.console.log(line)
         self._refresh_all()
@@ -996,7 +1001,13 @@ Hover over any button, badge or metric in this app to see what it does.
         if not confirm:
             return
 
-        cleaned, freed_mb, msg = clear_shader_caches(keep_latest=keep_latest)
+        def task():
+            cleaned, freed_mb, msg = clear_shader_caches(keep_latest=keep_latest)
+            self.after(0, lambda: self._on_clean_shaders_done(msg))
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def _on_clean_shaders_done(self, msg):
         self.console.log(f"[SHADERS] {msg}")
         messagebox.showinfo("Cleaned Shaders", msg)
         self._refresh_shaders_list()
@@ -1019,7 +1030,13 @@ Hover over any button, badge or metric in this app to see what it does.
         if not confirm:
             return
 
-        ok, msg = clean_user_cache_safe(target_dir)
+        def task():
+            ok, msg = clean_user_cache_safe(target_dir)
+            self.after(0, lambda: self._on_clean_user_cache_done(msg))
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def _on_clean_user_cache_done(self, msg):
         self.console.log(f"[USER CLEAN] {msg}")
         messagebox.showinfo("USER Cache Cleaned", msg)
 
