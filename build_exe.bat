@@ -5,7 +5,7 @@ echo =======================================================
 echo Building Standalone Star Citizen Symlink Manager EXE...
 echo =======================================================
 
-pyinstaller --noconfirm --onedir --windowed --collect-all customtkinter --name "StarCitizen-Symlink-Manager" main.py
+pyinstaller --noconfirm StarCitizen-Symlink-Manager.spec
 
 if errorlevel 1 (
     echo [ERROR] Build failed!

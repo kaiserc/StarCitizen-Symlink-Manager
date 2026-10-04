@@ -80,8 +80,10 @@ def clear_shader_caches(paths_to_delete: List[str] = None, keep_latest: bool = F
 
     if paths_to_delete is None:
         if keep_latest and len(caches) > 1:
-            # Skip the newest
-            targets = caches[1:]
+            # Keep the newest *shader* cache. The 'crashes' folder is often the most recently
+            # modified entry, so it must not be mistaken for the active cache.
+            newest = next((c for c in caches if not c.get("is_crashes")), None)
+            targets = [c for c in caches if c is not newest]
         else:
             targets = caches
     else:

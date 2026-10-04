@@ -2,72 +2,152 @@
 components.py - Reusable CustomTkinter UI widgets for Star Citizen Symlink Manager.
 """
 
-import os
-import subprocess
 import customtkinter as ctk
-from typing import Callable, Optional, Dict, Any, List
+from typing import Callable, Dict, Any, List, Optional, Sequence
 
 from .theme import (
+    COLOR_BG_INPUT,
+    COLOR_BTN,
+    COLOR_BTN_HOVER,
     COLOR_CARD_BG,
     COLOR_CARD_BORDER,
-    COLOR_CARD_HOVER,
     COLOR_ACCENT,
     COLOR_ACCENT_HOVER,
     COLOR_ACCENT_MUTED,
+    COLOR_ACCENT_GLOW,
+    COLOR_GOLD,
+    COLOR_GOLD_MUTED,
     COLOR_SUCCESS,
+    COLOR_SUCCESS_BG,
     COLOR_WARNING,
     COLOR_DANGER,
-    COLOR_MUTED,
+    COLOR_DANGER_BG,
+    COLOR_DANGER_HOVER,
     COLOR_TEXT_PRIMARY,
     COLOR_TEXT_SECONDARY,
     COLOR_TEXT_MUTED,
-    FONT_TITLE,
-    FONT_SUBTITLE,
     FONT_HEADING,
+    FONT_SECTION,
+    FONT_METRIC,
     FONT_BODY,
-    FONT_BODY_BOLD,
     FONT_SMALL,
+    FONT_SMALL_BOLD,
+    FONT_BTN,
     FONT_MONO,
     FONT_MONO_SMALL,
 )
+from .tooltip import Tooltip
+from .help_text import tip
 
 
-class StorageMetricCard(ctk.CTkFrame):
+# --- Small helpers -----------------------------------------------------------
+
+def add_tip(widget, key: str, extra_widgets: Optional[Sequence] = None) -> Optional[Tooltip]:
+    """Attaches the tooltip registered under ``key`` in help_text.TIPS."""
+    title, body = tip(key)
+    if not title:
+        return None
+    return Tooltip(widget, title, body, extra_widgets=extra_widgets)
+
+
+def hud_button(master, text: str, command=None, variant: str = "secondary", tip_key: str = None, **kwargs):
+    """
+    Consistently styled button.
+    variant: 'primary' (vibrant cyan), 'secondary' (neutral), 'success', 'danger', 'gold', 'ghost'
+    """
+    styles = {
+        "primary":   dict(fg_color=COLOR_ACCENT, hover_color=COLOR_ACCENT_HOVER, text_color="#04080F",
+                          border_color=COLOR_ACCENT, border_width=0),
+        "secondary": dict(fg_color=COLOR_BTN, hover_color=COLOR_BTN_HOVER, text_color=COLOR_TEXT_PRIMARY,
+                          border_color=COLOR_CARD_BORDER, border_width=1),
+        "success":   dict(fg_color=COLOR_SUCCESS_BG, hover_color="#104E3A", text_color=COLOR_SUCCESS,
+                          border_color=COLOR_SUCCESS, border_width=1),
+        "danger":    dict(fg_color=COLOR_DANGER_BG, hover_color=COLOR_DANGER_HOVER, text_color="#FFB3BB",
+                          border_color="#7A2632", border_width=1),
+        "gold":      dict(fg_color=COLOR_GOLD, hover_color="#F2C66D", text_color="#140E02",
+                          border_color=COLOR_GOLD, border_width=0),
+        "ghost":     dict(fg_color="transparent", hover_color=COLOR_BTN, text_color=COLOR_TEXT_SECONDARY,
+                          border_width=0),
+    }
+    opts = dict(styles.get(variant, styles["secondary"]))
+    opts.setdefault("corner_radius", 4)
+    opts.setdefault("font", FONT_BTN)
+    opts.setdefault("height", 36)
+    opts.update(kwargs)
+    btn = ctk.CTkButton(master, text=text, command=command, **opts)
+    if tip_key:
+        add_tip(btn, tip_key)
+    return btn
+
+
+def badge(master, text: str, fg: str, bg: str, tip_key: str = None) -> ctk.CTkLabel:
+    lbl = ctk.CTkLabel(
+        master, text=text, font=FONT_SMALL_BOLD, fg_color=bg, text_color=fg,
+        corner_radius=4, padx=12, pady=3, height=26,
+    )
+    if tip_key:
+        add_tip(lbl, tip_key)
+    return lbl
+
+
+class HudPanel(ctk.CTkFrame):
+    """Card with a thin cyan accent strip on the left edge (mobiGlas panel look)."""
+
+    def __init__(self, master, accent: str = COLOR_ACCENT, **kwargs):
+        kwargs.setdefault("fg_color", COLOR_CARD_BG)
+        kwargs.setdefault("border_color", COLOR_CARD_BORDER)
+        kwargs.setdefault("border_width", 1)
+        kwargs.setdefault("corner_radius", 6)
+        super().__init__(master, **kwargs)
+        self._strip = ctk.CTkFrame(self, fg_color=accent, width=3, corner_radius=0)
+        self._strip.place(x=1, rely=0.12, relheight=0.76)
+
+    def set_accent(self, color: str):
+        self._strip.configure(fg_color=color)
+
+
+class SectionLabel(ctk.CTkFrame):
+    """Uppercase section title with a fading rule, e.g. ── QUICK PRESETS ─────"""
+
+    def __init__(self, master, text: str, help_key: str = None, **kwargs):
+        super().__init__(master, fg_color="transparent", **kwargs)
+        ctk.CTkFrame(self, fg_color=COLOR_ACCENT, width=16, height=2, corner_radius=0).pack(side="left", padx=(0, 8))
+        lbl = ctk.CTkLabel(self, text=text.upper(), font=FONT_SECTION, text_color=COLOR_TEXT_SECONDARY)
+        lbl.pack(side="left")
+        if help_key:
+            info = ctk.CTkLabel(self, text="ⓘ", font=FONT_SMALL, text_color=COLOR_ACCENT, cursor="question_arrow")
+            info.pack(side="left", padx=(6, 0))
+            add_tip(info, help_key)
+        ctk.CTkFrame(self, fg_color=COLOR_CARD_BORDER, height=1, corner_radius=0).pack(
+            side="left", fill="x", expand=True, padx=(8, 0))
+
+
+class StorageMetricCard(HudPanel):
     """Card displaying a single KPI metric (e.g., Space Saved, Active Channels)."""
 
-    def __init__(self, master, title: str, value: str, subtitle: str, accent_color: str = COLOR_ACCENT, **kwargs):
-        super().__init__(
-            master,
-            fg_color=COLOR_CARD_BG,
-            border_color=COLOR_CARD_BORDER,
-            border_width=1,
-            corner_radius=8,
-            **kwargs
-        )
+    def __init__(self, master, title: str, value: str, subtitle: str, accent_color: str = COLOR_ACCENT,
+                 tip_key: str = None, **kwargs):
+        super().__init__(master, accent=accent_color, **kwargs)
 
-        self.title_lbl = ctk.CTkLabel(
-            self,
-            text=title.upper(),
-            font=FONT_SMALL,
-            text_color=COLOR_TEXT_MUTED
-        )
-        self.title_lbl.pack(anchor="w", padx=14, pady=(10, 2))
+        self.title_lbl = ctk.CTkLabel(self, text=title.upper(), font=FONT_SECTION, text_color=COLOR_TEXT_MUTED)
+        self.title_lbl.pack(anchor="w", padx=(18, 14), pady=(12, 0))
 
-        self.value_lbl = ctk.CTkLabel(
-            self,
-            text=value,
-            font=("Segoe UI", 20, "bold"),
-            text_color=accent_color
-        )
-        self.value_lbl.pack(anchor="w", padx=14, pady=(0, 2))
+        self.value_lbl = ctk.CTkLabel(self, text=value, font=FONT_METRIC, text_color=accent_color)
+        self.value_lbl.pack(anchor="w", padx=(18, 14), pady=(2, 0))
 
-        self.subtitle_lbl = ctk.CTkLabel(
-            self,
-            text=subtitle,
-            font=FONT_SMALL,
-            text_color=COLOR_TEXT_SECONDARY
-        )
-        self.subtitle_lbl.pack(anchor="w", padx=14, pady=(0, 10))
+        self.subtitle_lbl = ctk.CTkLabel(self, text=subtitle, font=FONT_SMALL, text_color=COLOR_TEXT_SECONDARY)
+        self.subtitle_lbl.pack(anchor="w", padx=(18, 14), pady=(2, 12))
+
+        if tip_key:
+            add_tip(self, tip_key, extra_widgets=(self.title_lbl, self.value_lbl, self.subtitle_lbl))
+
+    def update_values(self, value: str, subtitle: str = None):
+        self.value_lbl.configure(text=value)
+        if subtitle:
+            self.subtitle_lbl.configure(text=subtitle)
+
+        if tip_key:
+            add_tip(self, tip_key, extra_widgets=(self.title_lbl, self.value_lbl, self.subtitle_lbl))
 
     def update_values(self, value: str, subtitle: str = None):
         self.value_lbl.configure(text=value)
@@ -75,7 +155,7 @@ class StorageMetricCard(ctk.CTkFrame):
             self.subtitle_lbl.configure(text=subtitle)
 
 
-class ChannelCard(ctk.CTkFrame):
+class ChannelCard(HudPanel):
     """Card displaying a single Star Citizen release channel's status, target, and controls."""
 
     def __init__(
@@ -88,14 +168,7 @@ class ChannelCard(ctk.CTkFrame):
         on_open_callback: Callable[[str], None],
         **kwargs
     ):
-        super().__init__(
-            master,
-            fg_color=COLOR_CARD_BG,
-            border_color=COLOR_CARD_BORDER,
-            border_width=1,
-            corner_radius=8,
-            **kwargs
-        )
+        super().__init__(master, **kwargs)
         self.channel_data = channel_data
         self.available_targets = available_targets
         self.on_link_callback = on_link_callback
@@ -115,133 +188,86 @@ class ChannelCard(ctk.CTkFrame):
         is_master = self.channel_data.get("is_master_base", False)
         symlinks_pointing = self.channel_data.get("symlinks_pointing_here", [])
 
-        # Top row: Channel Name + Status Badge
-        top_row = ctk.CTkFrame(self, fg_color="transparent")
-        top_row.pack(fill="x", padx=14, pady=(10, 4))
-
-        # Channel Title
-        name_lbl = ctk.CTkLabel(
-            top_row,
-            text=name,
-            font=FONT_HEADING,
-            text_color=COLOR_TEXT_PRIMARY
-        )
-        name_lbl.pack(side="left")
-
-        # Master base indicator
-        if is_master:
-            master_badge = ctk.CTkLabel(
-                top_row,
-                text="⭐ MASTER BASE",
-                font=FONT_SMALL,
-                fg_color="#1E3A8A",
-                text_color="#93C5FD",
-                corner_radius=4,
-                padx=6,
-                pady=2
-            )
-            master_badge.pack(side="left", padx=8)
-
-        # Status badge on right
-        if link_type == "symlink":
-            badge_text = "🔗 SYMBOLIC LINK"
-            badge_bg = "#064E3B"
-            badge_fg = COLOR_SUCCESS
-        elif link_type == "junction":
-            badge_text = "🔗 NTFS JUNCTION"
-            badge_bg = "#064E3B"
-            badge_fg = COLOR_SUCCESS
-        elif link_type == "real_dir":
-            badge_text = "📁 REAL DIRECTORY"
-            badge_bg = "#1E293B"
-            badge_fg = COLOR_TEXT_SECONDARY
-        else:
-            badge_text = "⚪ NOT INSTALLED"
-            badge_bg = "#334155"
-            badge_fg = COLOR_TEXT_MUTED
-
+        # Status -> (badge text, fg, bg, accent strip, tooltip key)
         if is_link and not target_exists:
-            badge_text = "⚠️ BROKEN LINK"
-            badge_bg = "#7F1D1D"
-            badge_fg = COLOR_DANGER
+            status = ("BROKEN LINK", COLOR_DANGER, COLOR_DANGER_BG, COLOR_DANGER, "badge_broken")
+        elif link_type == "symlink":
+            status = ("SYMLINK", COLOR_SUCCESS, COLOR_SUCCESS_BG, COLOR_SUCCESS, "badge_symlink")
+        elif link_type == "junction":
+            status = ("JUNCTION", COLOR_SUCCESS, COLOR_SUCCESS_BG, COLOR_SUCCESS, "badge_junction")
+        elif link_type == "real_dir":
+            status = ("REAL FOLDER", COLOR_TEXT_SECONDARY, COLOR_BTN, COLOR_GOLD if is_master else COLOR_ACCENT,
+                      "badge_real")
+        else:
+            status = ("NOT INSTALLED", COLOR_TEXT_MUTED, "#111B2B", COLOR_CARD_BORDER, "badge_missing")
+        badge_text, badge_fg, badge_bg, strip, badge_tip = status
+        self.set_accent(strip)
 
-        status_badge = ctk.CTkLabel(
-            top_row,
-            text=badge_text,
-            font=FONT_SMALL,
-            fg_color=badge_bg,
-            text_color=badge_fg,
-            corner_radius=4,
-            padx=8,
-            pady=2
-        )
-        status_badge.pack(side="right")
+        # Top row: Channel Name + badges
+        top_row = ctk.CTkFrame(self, fg_color="transparent")
+        top_row.pack(fill="x", padx=(18, 14), pady=(12, 4))
+
+        ctk.CTkLabel(top_row, text=name, font=FONT_HEADING, text_color=COLOR_TEXT_PRIMARY).pack(side="left")
+
+        if is_master:
+            badge(top_row, "★ MASTER BASE", COLOR_GOLD, COLOR_GOLD_MUTED, "badge_master").pack(side="left", padx=10)
+
+        badge(top_row, badge_text, badge_fg, badge_bg, badge_tip).pack(side="right")
 
         # Detail description row
-        detail_frame = ctk.CTkFrame(self, fg_color="transparent")
-        detail_frame.pack(fill="x", padx=14, pady=2)
-
         if is_link:
-            target_desc = f"Points to: → {target_raw}"
+            target_desc = f"→  {target_raw}"
             if not target_exists:
-                target_desc += " (TARGET MISSING!)"
+                target_desc += "   (target missing!)"
             desc_color = COLOR_ACCENT if target_exists else COLOR_DANGER
         elif is_master:
             pointing_str = ", ".join(symlinks_pointing) if symlinks_pointing else "None"
-            target_desc = f"Master source for: {pointing_str}"
-            desc_color = "#38BDF8"
+            target_desc = f"Shared by:  {pointing_str}"
+            desc_color = COLOR_GOLD
         elif link_type == "real_dir":
-            target_desc = "Independent standalone directory (not symlinked)"
+            target_desc = "Standalone folder - not shared with other channels"
             desc_color = COLOR_TEXT_MUTED
         else:
-            target_desc = "Channel folder does not exist yet"
+            target_desc = "Folder does not exist yet - link it to a target below"
             desc_color = COLOR_TEXT_MUTED
 
-        desc_lbl = ctk.CTkLabel(
-            detail_frame,
-            text=target_desc,
-            font=FONT_BODY,
-            text_color=desc_color
-        )
-        desc_lbl.pack(anchor="w")
+        ctk.CTkLabel(self, text=target_desc, font=FONT_BODY, text_color=desc_color).pack(
+            anchor="w", padx=(18, 14), pady=(0, 4))
 
         # Metadata row: Version info & Size
         meta_frame = ctk.CTkFrame(self, fg_color="transparent")
-        meta_frame.pack(fill="x", padx=14, pady=(2, 8))
+        meta_frame.pack(fill="x", padx=(18, 14), pady=(0, 8))
 
         branch = version_info.get("branch", "")
         ver = version_info.get("version", "")
         if branch or ver:
-            v_text = f"Version: {branch} ({ver})" if ver else f"Version: {branch}"
+            v_text = f"Build  {branch}  ·  {ver}" if ver else f"Build  {branch}"
         else:
-            v_text = "Version: Unknown / Not Initialized"
+            v_text = "Build  unknown"
 
-        v_lbl = ctk.CTkLabel(
-            meta_frame,
-            text=v_text,
-            font=FONT_SMALL,
-            text_color=COLOR_TEXT_MUTED
-        )
+        v_lbl = ctk.CTkLabel(meta_frame, text=v_text, font=FONT_MONO, text_color=COLOR_TEXT_MUTED)
         v_lbl.pack(side="left")
+        add_tip(v_lbl, "version")
 
         size_text = f"~{size_gb} GB" if size_gb > 0 else "--"
-        size_lbl = ctk.CTkLabel(
-            meta_frame,
-            text=f"Disk footprint: {size_text}",
-            font=FONT_SMALL,
-            text_color=COLOR_TEXT_MUTED
-        )
+        if is_link and size_gb > 0:
+            size_text += " (shared)"
+        size_lbl = ctk.CTkLabel(meta_frame, text=f"Footprint  {size_text}", font=FONT_MONO,
+                                text_color=COLOR_TEXT_MUTED)
         size_lbl.pack(side="right")
+        add_tip(size_lbl, "disk_footprint")
 
         # Divider
-        div = ctk.CTkFrame(self, fg_color=COLOR_CARD_BORDER, height=1)
-        div.pack(fill="x", padx=14, pady=(0, 8))
+        ctk.CTkFrame(self, fg_color=COLOR_CARD_BORDER, height=1, corner_radius=0).pack(
+            fill="x", padx=(18, 14), pady=(0, 10))
 
         # Bottom Actions row
         actions_row = ctk.CTkFrame(self, fg_color="transparent")
-        actions_row.pack(fill="x", padx=14, pady=(0, 10))
+        actions_row.pack(fill="x", padx=(18, 14), pady=(0, 12))
 
-        # Link dropdown & Button
+        ctk.CTkLabel(actions_row, text="Link to", font=FONT_SMALL_BOLD, text_color=COLOR_TEXT_SECONDARY).pack(
+            side="left", padx=(0, 8))
+
         filtered_targets = [t for t in self.available_targets if t != name]
         if not filtered_targets:
             filtered_targets = ["Game", "LIVE"]
@@ -249,59 +275,38 @@ class ChannelCard(ctk.CTkFrame):
         self.target_dropdown = ctk.CTkOptionMenu(
             actions_row,
             values=filtered_targets,
-            width=110,
-            height=28,
-            font=FONT_SMALL,
-            fg_color="#1E293B",
-            button_color="#334155",
-            button_hover_color="#475569"
+            width=150,
+            height=36,
+            corner_radius=4,
+            font=FONT_BODY,
+            dropdown_font=FONT_BODY,
+            fg_color=COLOR_BG_INPUT,
+            button_color=COLOR_BTN,
+            button_hover_color=COLOR_BTN_HOVER,
+            text_color=COLOR_TEXT_PRIMARY,
+            dropdown_fg_color=COLOR_CARD_BG,
+            dropdown_hover_color=COLOR_ACCENT_GLOW,
         )
-        # Set default selection
-        default_target = "Game" if "Game" in filtered_targets else filtered_targets[0]
+        # Preselect the current target if this is a link, else prefer 'Game'
+        current = target_raw.replace("\\", "/").rstrip("/").split("/")[-1] if is_link and target_raw else ""
+        if current in filtered_targets:
+            default_target = current
+        else:
+            default_target = "Game" if "Game" in filtered_targets else filtered_targets[0]
         self.target_dropdown.set(default_target)
-        self.target_dropdown.pack(side="left", padx=(0, 6))
+        self.target_dropdown.pack(side="left", padx=(0, 8))
+        add_tip(self.target_dropdown, "target_dropdown")
 
-        link_btn = ctk.CTkButton(
-            actions_row,
-            text="🔗 Link",
-            width=65,
-            height=28,
-            font=FONT_SMALL,
-            fg_color=COLOR_ACCENT_MUTED,
-            hover_color=COLOR_ACCENT_HOVER,
-            command=self._on_link_clicked
-        )
-        link_btn.pack(side="left", padx=(0, 6))
+        hud_button(actions_row, "Re-link" if is_link else "Link", self._on_link_clicked,
+                   variant="primary", tip_key="link_btn", width=92, height=36).pack(side="left", padx=(0, 6))
 
-        # Unlink button (enabled if currently a link)
         if is_link:
-            unlink_btn = ctk.CTkButton(
-                actions_row,
-                text="✂️ Unlink",
-                width=70,
-                height=28,
-                font=FONT_SMALL,
-                fg_color="#450A0A",
-                hover_color="#7F1D1D",
-                text_color="#FCA5A5",
-                command=lambda: self.on_unlink_callback(name)
-            )
-            unlink_btn.pack(side="left", padx=(0, 6))
+            hud_button(actions_row, "Unlink", lambda: self.on_unlink_callback(name),
+                       variant="danger", tip_key="unlink_btn", width=92, height=36).pack(side="left", padx=(0, 6))
 
-        # Open in Explorer button
         if self.channel_data.get("exists", False):
-            open_btn = ctk.CTkButton(
-                actions_row,
-                text="📂 Open",
-                width=65,
-                height=28,
-                font=FONT_SMALL,
-                fg_color="#1E293B",
-                hover_color="#334155",
-                text_color=COLOR_TEXT_SECONDARY,
-                command=lambda: self.on_open_callback(self.channel_data.get("path", ""))
-            )
-            open_btn.pack(side="right")
+            hud_button(actions_row, "Open Folder", lambda: self.on_open_callback(self.channel_data.get("path", "")),
+                       variant="ghost", tip_key="open_channel", width=120, height=36).pack(side="right")
 
     def _on_link_clicked(self):
         target = self.target_dropdown.get()
@@ -312,52 +317,65 @@ class ChannelCard(ctk.CTkFrame):
 class LogConsole(ctk.CTkFrame):
     """Scrollable, color-coded console for application logs and operations."""
 
+    TAG_COLORS = {
+        "SUCCESS": COLOR_SUCCESS,
+        "RESTORE": COLOR_SUCCESS,
+        "ERROR": COLOR_DANGER,
+        "FAILED": COLOR_DANGER,
+        "WARN": COLOR_WARNING,
+        "BACKUP": COLOR_GOLD,
+        "PRESET": COLOR_ACCENT,
+        "DETECT": COLOR_ACCENT,
+        "LAUNCH": COLOR_ACCENT,
+    }
+
     def __init__(self, master, **kwargs):
         super().__init__(
             master,
-            fg_color="#0A0E17",
+            fg_color=COLOR_BG_INPUT,
             border_color=COLOR_CARD_BORDER,
             border_width=1,
-            corner_radius=8,
+            corner_radius=6,
             **kwargs
         )
 
         header_frame = ctk.CTkFrame(self, fg_color="transparent")
-        header_frame.pack(fill="x", padx=10, pady=(6, 2))
+        header_frame.pack(fill="x", padx=12, pady=(8, 2))
 
-        lbl = ctk.CTkLabel(
-            header_frame,
-            text="ACTIVITY LOG",
-            font=FONT_SMALL,
-            text_color=COLOR_TEXT_MUTED
-        )
-        lbl.pack(side="left")
+        dot = ctk.CTkFrame(header_frame, fg_color=COLOR_SUCCESS, width=7, height=7, corner_radius=4)
+        dot.pack(side="left", padx=(0, 8))
+        ctk.CTkLabel(header_frame, text="ACTIVITY LOG", font=FONT_SECTION, text_color=COLOR_TEXT_MUTED).pack(side="left")
 
-        clear_btn = ctk.CTkButton(
-            header_frame,
-            text="Clear Log",
-            width=60,
-            height=20,
-            font=("Segoe UI", 8),
-            fg_color="#1E293B",
-            hover_color="#334155",
-            command=self.clear
-        )
-        clear_btn.pack(side="right")
+        self.toggle_btn = hud_button(header_frame, "Hide", self.toggle, variant="ghost", width=54, height=22,
+                                     font=FONT_SMALL)
+        self.toggle_btn.pack(side="right")
+        hud_button(header_frame, "Clear", self.clear, variant="ghost", tip_key="clear_log", width=54, height=22,
+                   font=FONT_SMALL).pack(side="right", padx=(0, 4))
 
         self.textbox = ctk.CTkTextbox(
             self,
-            font=FONT_MONO_SMALL,
-            fg_color="#06090F",
+            font=FONT_MONO,
+            fg_color=COLOR_BG_INPUT,
             text_color=COLOR_TEXT_SECONDARY,
             wrap="word",
-            height=110,
+            height=76,
+            border_width=0,
         )
         self.textbox.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        for tag, color in self.TAG_COLORS.items():
+            self.textbox.tag_config(tag, foreground=color)
+        self._collapsed = False
 
     def log(self, text: str):
+        tag = None
+        if text.startswith("["):
+            key = text[1:text.find("]")].split()[0].upper() if "]" in text else ""
+            tag = self.TAG_COLORS.get(key) and key
         self.textbox.configure(state="normal")
-        self.textbox.insert("end", f"{text}\n")
+        if tag:
+            self.textbox.insert("end", f"{text}\n", tag)
+        else:
+            self.textbox.insert("end", f"{text}\n")
         self.textbox.see("end")
         self.textbox.configure(state="disabled")
 
@@ -365,3 +383,12 @@ class LogConsole(ctk.CTkFrame):
         self.textbox.configure(state="normal")
         self.textbox.delete("1.0", "end")
         self.textbox.configure(state="disabled")
+
+    def toggle(self):
+        if self._collapsed:
+            self.textbox.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+            self.toggle_btn.configure(text="Hide")
+        else:
+            self.textbox.pack_forget()
+            self.toggle_btn.configure(text="Show")
+        self._collapsed = not self._collapsed

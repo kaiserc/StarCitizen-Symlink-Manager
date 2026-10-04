@@ -43,6 +43,13 @@ When switching between channels in the RSI Launcher, clicking **"Verify Files"**
    - **Process Guard**: Detects if `StarCitizen.exe` or `RSI Launcher.exe` is running to prevent file locking.
    - **UAC Elevation Helper**: Supports both native Symbolic Links (Admin/Developer Mode) and NTFS Directory Junctions (no admin privileges needed).
 
+6. **💡 Built-in Tooltips & Guidance**:
+   - Interactive mobiGlas hover tooltips across every badge, button, and preset to explain what each function does, how files are affected, and when to use them.
+
+7. **🎨 Star Citizen mobiGlas HUD Theme & Official Fankit Support**:
+   - Sci-fi aesthetic with clean status indicators and bundled *Electrolize* display font.
+   - **Official Asset Drop-in**: Backers can drop official assets from the [RSI Fankit](https://robertsspaceindustries.com/fankit) into `assets/fankit/` (`logo.png`, `header.png`/`header.jpg`, `made_by_the_community.png`) and the app automatically integrates them on next launch.
+
 ---
 
 ## 🖥️ How to Run
@@ -91,6 +98,10 @@ python main.py --clean-shaders --keep-latest-shaders
 
 ```
 StarCitizen-Symlink-Manager/
+├── assets/
+│   ├── fankit/          # Optional drop-in folder for official RSI Fankit logos/headers
+│   ├── fonts/           # Bundled fonts (Electrolize display typeface)
+│   └── ui/              # Bundled app iconography, emblem, and header banner art
 ├── src/
 │   ├── core/
 │   │   ├── detector.py      # Auto-detection of SC installs, logs, registry, drives
@@ -100,10 +111,12 @@ StarCitizen-Symlink-Manager/
 │   │   ├── shader_mgr.py    # Safe shader cache and USER cache cleaning (preserving controls)
 │   │   └── process_guard.py # Detects running StarCitizen.exe or RSI Launcher.exe
 │   └── gui/
-│       ├── app.py           # Main CustomTkinter window, modern RSI dark aesthetic
-│       ├── components.py    # Metric cards, channel cards, activity log console
-│       └── theme.py         # Star Citizen dark sci-fi color palette & styling
-├── dist/                    # Compiled standalone Windows executable (.exe)
+│       ├── app.py           # Main CustomTkinter window with mobiGlas HUD aesthetic
+│       ├── components.py    # Metric cards, channel cards, collapsible activity log
+│       ├── tooltip.py       # Non-flickering hover tooltip widget with mobiGlas styling
+│       ├── help_text.py     # Centralized explanation copy for every control and badge
+│       ├── assets.py        # Font loader & asset resolver with Fankit auto-detection
+│       └── theme.py         # SC color palette, semantic statuses & typography
 ├── backups/                 # Timestamped ZIP backups of keybindings and controls
 ├── tests/
 │   └── test_core.py         # Automated test suite
