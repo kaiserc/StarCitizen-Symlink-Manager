@@ -27,6 +27,7 @@ from src.core.channel_mgr import (
     STANDARD_CHANNELS,
     scan_all_channels,
     calculate_storage_stats,
+    detect_active_preset,
     apply_reddit_preset,
     apply_independent_live_preset,
     apply_direct_live_preset,
@@ -393,12 +394,15 @@ class SCSymlinkManagerApp(ctk.CTk):
         btn_row = ctk.CTkFrame(tab, fg_color="transparent")
         btn_row.pack(fill="x", pady=(0, 12))
 
-        hud_button(btn_row, "★  Reddit Method · Unified Base", self._apply_reddit_preset,
-                   variant="gold", tip_key="preset_reddit", height=40).pack(side="left", padx=(0, 8))
-        hud_button(btn_row, "Independent LIVE + Shared Test", self._apply_independent_preset,
-                   tip_key="preset_independent", height=40).pack(side="left", padx=(0, 8))
-        hud_button(btn_row, "Direct Link to LIVE", self._apply_direct_preset,
-                   tip_key="preset_direct", height=40).pack(side="left", padx=(0, 8))
+        self.btn_preset_reddit = hud_button(btn_row, "★  Reddit Method · Unified Base", self._apply_reddit_preset,
+                   variant="gold", tip_key="preset_reddit", height=40)
+        self.btn_preset_reddit.pack(side="left", padx=(0, 8))
+        self.btn_preset_independent = hud_button(btn_row, "Independent LIVE + Shared Test", self._apply_independent_preset,
+                   tip_key="preset_independent", height=40)
+        self.btn_preset_independent.pack(side="left", padx=(0, 8))
+        self.btn_preset_direct = hud_button(btn_row, "Direct Link to LIVE", self._apply_direct_preset,
+                   tip_key="preset_direct", height=40)
+        self.btn_preset_direct.pack(side="left", padx=(0, 8))
         hud_button(btn_row, "+  Custom Channel", self._on_add_custom_channel, variant="primary",
                    tip_key="preset_custom", height=40).pack(side="right")
 
@@ -643,8 +647,42 @@ Hover over any button, badge or metric in this app to see what it does.
             self.chip_storage_lbl.configure(text=f"{stats['active_channels']} CHANNELS ACTIVE")
             self.chip_storage_sub.configure(text=f"~{stats['saved_gb']} GB SAVED")
 
+        # Update Preset Highlights
+        self._update_preset_highlights(self.channels_data)
+
         # Populate Channels Grid
         self._render_channel_cards()
+
+    def _update_preset_highlights(self, channels_data):
+        active = detect_active_preset(channels_data)
+        
+        # Reset all to secondary
+        for btn, text in [
+            (self.btn_preset_reddit, "Reddit Method · Unified Base"),
+            (self.btn_preset_independent, "Independent LIVE + Shared Test"),
+            (self.btn_preset_direct, "Direct Link to LIVE")
+        ]:
+            if hasattr(self, "btn_preset_reddit"):  # ensures buttons exist
+                btn.configure(
+                    text=text,
+                    fg_color=COLOR_BTN, 
+                    hover_color=COLOR_BTN_HOVER, 
+                    text_color=COLOR_TEXT_PRIMARY
+                )
+        
+        # Highlight active
+        gold_kwargs = dict(
+            fg_color=COLOR_GOLD, 
+            hover_color="#F2C66D", 
+            text_color="#140E02"
+        )
+        
+        if active == "reddit" and hasattr(self, "btn_preset_reddit"):
+            self.btn_preset_reddit.configure(text="★  Reddit Method · Unified Base", **gold_kwargs)
+        elif active == "independent" and hasattr(self, "btn_preset_independent"):
+            self.btn_preset_independent.configure(text="★  Independent LIVE + Shared Test", **gold_kwargs)
+        elif active == "direct" and hasattr(self, "btn_preset_direct"):
+            self.btn_preset_direct.configure(text="★  Direct Link to LIVE", **gold_kwargs)
 
     def _render_channel_cards(self):
         TooltipManager.hide()
@@ -688,19 +726,23 @@ Hover over any button, badge or metric in this app to see what it does.
         ctk.CTkLabel(box, text=title.upper(), font=FONT_SECTION, text_color=COLOR_TEXT_SECONDARY).pack()
         ctk.CTkLabel(box, text=body, font=FONT_BODY, text_color=COLOR_TEXT_MUTED, wraplength=560).pack(pady=(4, 0))
 
+    def _check_running_processes(self) -> bool:
+        """Returns False if Star Citizen is running and user cancels, True otherwise."""
+        procs = get_running_sc_processes()
+        if any("starcitizen" in p["name"].lower() for p in procs):
+            return messagebox.askyesno(
+                "Star Citizen Running",
+                "Star Citizen is currently running! Creating or modifying links while the game is open can cause file locks. Do you want to proceed anyway?"
+            )
+        return True
+
     def _on_link_channel(self, channel_name: str, target_name: str):
         """Creates or updates a link for a specific channel."""
         if not self.sc_root:
             return
 
-        # Check process lock
-        procs = get_running_sc_processes()
-        if any("starcitizen" in p["name"].lower() for p in procs):
-            if not messagebox.askyesno(
-                "Star Citizen Running",
-                "Star Citizen is currently running! Creating or modifying links while the game is open can cause file locks. Do you want to proceed anyway?"
-            ):
-                return
+        if not self._check_running_processes():
+            return
 
         target_path = os.path.join(self.sc_root, target_name)
         link_path = os.path.join(self.sc_root, channel_name)
@@ -745,12 +787,18 @@ Hover over any button, badge or metric in this app to see what it does.
             messagebox.showwarning("Notice", "Please select your Star Citizen directory first.")
             return
 
+        if not self._check_running_processes():
+            return
+
         confirm = messagebox.askyesno(
             "Apply Reddit Method (Unified Base)",
             "This preset will:\n"
-            "1. Establish 'Game' as the master base directory (renaming 'LIVE' if necessary).\n"
+            "1. Establish 'Game' as the master base directory (backing up 'LIVE' if necessary).\n"
             "2. Link LIVE, PTU, EPTU, TECH-PREVIEW, and HOTFIX to 'Game'.\n"
             "3. Allow playing all channels using only ~150GB total SSD space.\n\n"
+            "⚠️ Note: Because channels will share the same physical files, you cannot have two different versions "
+            "(e.g., LIVE and PTU) downloaded at the exact same time. The launcher will quickly patch "
+            "the shared files when you switch channels.\n\n"
             "Do you want to proceed?"
         )
         if not confirm:
@@ -767,10 +815,15 @@ Hover over any button, badge or metric in this app to see what it does.
             messagebox.showwarning("Notice", "Please select your Star Citizen directory first.")
             return
 
+        if not self._check_running_processes():
+            return
+
         confirm = messagebox.askyesno(
             "Apply Independent LIVE + Shared Test",
             "This preset keeps 'LIVE' as an independent standalone directory (so you never need to re-verify for live raids),\n"
             "and links all test channels (EPTU, TECH-PREVIEW, HOTFIX) to 'PTU'.\n\n"
+            "⚠️ Note: Existing real test channel folders will be renamed to backups. The test channels will share "
+            "PTU's files, meaning the launcher will quickly patch the differences when you switch between them.\n\n"
             "Do you want to proceed?"
         )
         if not confirm:
@@ -787,9 +840,14 @@ Hover over any button, badge or metric in this app to see what it does.
             messagebox.showwarning("Notice", "Please select your Star Citizen directory first.")
             return
 
+        if not self._check_running_processes():
+            return
+
         confirm = messagebox.askyesno(
             "Apply Direct Link to LIVE",
             "This preset sets 'LIVE' as the master folder, and links PTU, EPTU, TECH-PREVIEW, and HOTFIX directly to LIVE.\n\n"
+            "⚠️ Note: Existing test folders will be backed up. Since all channels will share LIVE's physical files, "
+            "you will need to patch whenever you switch between LIVE and a test channel.\n\n"
             "Do you want to proceed?"
         )
         if not confirm:

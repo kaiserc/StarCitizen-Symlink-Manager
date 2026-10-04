@@ -6,7 +6,7 @@ __pycache__/
 # PyInstaller build outputs
 build/
 dist/
-*.spec
+
 
 # Backups
 backups/*.zip

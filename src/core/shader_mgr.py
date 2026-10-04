@@ -96,8 +96,9 @@ def clear_shader_caches(paths_to_delete: List[str] = None, keep_latest: bool = F
         try:
             size = item["size_mb"]
             shutil.rmtree(item["path"], ignore_errors=True)
-            cleaned_count += 1
-            freed_mb += size
+            if not os.path.exists(item["path"]):
+                cleaned_count += 1
+                freed_mb += size
         except Exception:
             pass
 
@@ -116,9 +117,13 @@ def clean_user_cache_safe(channel_path: str) -> Tuple[bool, str]:
     if not os.path.isdir(channel_path):
         return False, "Channel directory not found."
 
-    user_client_0 = os.path.join(channel_path, "USER", "client", "0")
+    # Use 'Client' to match Star Citizen's official casing
+    user_client_0 = os.path.join(channel_path, "USER", "Client", "0")
     if not os.path.isdir(user_client_0):
-        return True, "No USER cache found to clean."
+        # Fallback for alternative casings
+        user_client_0 = os.path.join(channel_path, "user", "client", "0")
+        if not os.path.isdir(user_client_0):
+            return True, "No USER cache found to clean."
 
     # Directories that are SAFE to wipe
     safe_to_wipe_dirs = [
@@ -140,7 +145,8 @@ def clean_user_cache_safe(channel_path: str) -> Tuple[bool, str]:
         if os.path.isdir(p):
             try:
                 shutil.rmtree(p, ignore_errors=True)
-                cleaned_items += 1
+                if not os.path.exists(p):
+                    cleaned_items += 1
             except Exception:
                 pass
 

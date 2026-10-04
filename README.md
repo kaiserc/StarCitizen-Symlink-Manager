@@ -70,6 +70,9 @@ Double-click `run.bat` in the project root.
 
 ### Option 3: Python Command Line
 ```bash
+# Install dependencies
+pip install -r requirements.txt
+
 # Launch modern CustomTkinter GUI
 python main.py
 

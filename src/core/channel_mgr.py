@@ -98,7 +98,7 @@ def scan_all_channels(sc_root: str) -> Dict[str, Dict[str, Any]]:
         all_channel_names.insert(0, "Game")
 
     for entry in entries:
-        if entry not in all_channel_names and not entry.startswith("."):
+        if entry not in all_channel_names and not entry.startswith(".") and "_backup_" not in entry:
             full_p = os.path.join(sc_root, entry)
             # Only include if it's a directory or link
             if os.path.isdir(full_p) or os.path.islink(full_p):
@@ -183,6 +183,39 @@ def calculate_storage_stats(channels: Dict[str, Dict[str, Any]]) -> Dict[str, An
         "active_channels": active_channels_count,
         "symlink_count": symlink_count,
     }
+
+
+def detect_active_preset(channels: Dict[str, Dict[str, Any]]) -> str:
+    """
+    Detects which preset most closely matches the user's current channel layout.
+    Returns one of: "reddit", "independent", "direct", or "custom".
+    """
+    if not channels:
+        return "custom"
+
+    # 1. Reddit Method: A custom master base exists (e.g. Game) and LIVE is a link to it
+    for name, ch in channels.items():
+        if name not in STANDARD_CHANNELS and ch.get("is_master_base", False):
+            live_ch = channels.get("LIVE", {})
+            if live_ch.get("is_link") and live_ch.get("target_raw", "").endswith(name):
+                return "reddit"
+
+    live_ch = channels.get("LIVE", {})
+    # If LIVE is not a real dir, and it wasn't the Reddit method, we don't recognize it
+    if not live_ch.get("exists") or live_ch.get("link_type") != "real_dir":
+        return "custom"
+
+    # 2. Direct Link to LIVE: LIVE is a master base, and test channels point to it
+    if live_ch.get("is_master_base", False):
+        return "direct"
+
+    # 3. Independent LIVE + Shared Testbed: LIVE is real, and another test channel is a master base
+    for name, ch in channels.items():
+        if name != "LIVE" and ch.get("is_master_base", False):
+            return "independent"
+
+    return "custom"
+
 
 
 def apply_reddit_preset(sc_root: str, base_folder_name: str = "Game", prefer_symlink: bool = True) -> List[str]:
@@ -273,6 +306,10 @@ def apply_independent_live_preset(sc_root: str, test_base_name: str = "PTU", pre
     channels = scan_all_channels(sc_root)
 
     test_base_path = os.path.join(sc_root, test_base_name)
+
+    # If test base is currently a link, we need a real directory
+    if test_base_name in channels and channels[test_base_name]["is_link"]:
+        safe_unlink(test_base_path)
 
     # Ensure test base exists as a real directory
     if not os.path.exists(test_base_path):
@@ -365,8 +402,12 @@ def apply_direct_live_preset(sc_root: str, prefer_symlink: bool = True) -> List[
                 timestamp = time.strftime("%Y%m%d_%H%M%S")
                 backup_name = f"{ch_name}_backup_{timestamp}"
                 backup_path = os.path.join(sc_root, backup_name)
-                safe_rename(ch_path, backup_path)
-                logs.append(f"[BACKUP] Backed up '{ch_name}' to '{backup_name}'.")
+                ok, msg = safe_rename(ch_path, backup_path)
+                if ok:
+                    logs.append(f"[BACKUP] Backed up '{ch_name}' to '{backup_name}'.")
+                else:
+                    logs.append(f"[ERROR] Could not back up '{ch_name}': {msg}")
+                    continue
 
         ok, ltype, msg = create_link_auto(live_path, ch_path, prefer_symlink=prefer_symlink)
         if ok:

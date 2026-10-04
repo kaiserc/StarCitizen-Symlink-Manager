@@ -25,6 +25,7 @@ from .channel_mgr import (
     STANDARD_CHANNELS,
     scan_all_channels,
     calculate_storage_stats,
+    detect_active_preset,
     apply_reddit_preset,
     apply_independent_live_preset,
     apply_direct_live_preset,
