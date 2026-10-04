@@ -37,6 +37,14 @@ class TooltipManager:
     _scheduled_id: Optional[str] = None
     _autohide_id: Optional[str] = None
     _bound_roots = set()
+    _enabled: bool = True
+
+    @classmethod
+    def set_enabled(cls, enabled: bool):
+        """Globally enables or disables tooltips (useful during modal dialogs)."""
+        cls._enabled = enabled
+        if not enabled:
+            cls.hide()
 
     @classmethod
     def register_root(cls, root_window):
@@ -94,6 +102,9 @@ class TooltipManager:
 
     @classmethod
     def schedule(cls, tooltip: "Tooltip", delay: int):
+        if not cls._enabled:
+            return
+
         # If this tooltip is already showing, do nothing
         if cls._active_owner is tooltip and cls._active_window is not None:
             return
@@ -114,6 +125,10 @@ class TooltipManager:
     @classmethod
     def _show(cls, tooltip: "Tooltip"):
         cls._scheduled_id = None
+
+        if not cls._enabled:
+            cls.hide()
+            return
 
         # Verify widget still exists and is visible on screen
         try:
@@ -307,6 +322,8 @@ class Tooltip:
         return False
 
     def _on_enter(self, _event=None):
+        if not TooltipManager._enabled:
+            return
         TooltipManager.schedule(self, self.delay)
 
     def _on_leave(self, _event=None):

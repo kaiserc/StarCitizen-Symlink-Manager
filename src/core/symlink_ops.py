@@ -109,9 +109,10 @@ def inspect_path(path: str) -> Dict[str, Any]:
             target = os.readlink(path)
             # Remove Win32 extended path prefixes if present: \\?\ or \??\
             clean_target = target
-            for prefix in ["\\\\?\\/", "\\\\?\\\\", "\\??\\/", "\\??\\\\"]:
+            for prefix in ["\\??\\", "\\\\?\\", "\\??/", "\\\\?/"]:
                 if clean_target.startswith(prefix):
                     clean_target = clean_target[len(prefix):]
+                    break
 
             result["target_raw"] = clean_target
 

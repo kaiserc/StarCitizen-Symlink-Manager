@@ -331,9 +331,7 @@ class SCSymlinkManagerApp(ctk.CTk):
 
         hud_button(top_row, "Auto-Detect", self._on_auto_detect, variant="primary",
                    tip_key="auto_detect", width=115, height=38).pack(side="left", padx=(0, 6))
-        hud_button(top_row, "Browse…", self._on_browse, tip_key="browse", width=95, height=38).pack(side="left", padx=(0, 6))
-        hud_button(top_row, "Open", lambda: self._open_in_explorer(self.sc_root),
-                   tip_key="open_root", width=75, height=38).pack(side="left", padx=(0, 6))
+        hud_button(top_row, "Browse…", self._on_browse, width=95, height=38).pack(side="left", padx=(0, 6))
         hud_button(top_row, "⟳", self._refresh_all, tip_key="refresh", width=40, height=38,
                    font=(FONT_UI_FAMILY, 15, "bold")).pack(side="left")
 
@@ -727,12 +725,16 @@ Hover over any button, badge or metric in this app to see what it does.
         ctk.CTkLabel(box, text=body, font=FONT_BODY, text_color=COLOR_TEXT_MUTED, wraplength=560).pack(pady=(4, 0))
 
     def _check_running_processes(self) -> bool:
-        """Returns False if Star Citizen is running and user cancels, True otherwise."""
+        """Returns False if Star Citizen or RSI Launcher is running and user cancels, True otherwise."""
         procs = get_running_sc_processes()
-        if any("starcitizen" in p["name"].lower() for p in procs):
+        if procs:
+            proc_names = ", ".join(sorted(set(p["name"] for p in procs)))
             return messagebox.askyesno(
-                "Star Citizen Running",
-                "Star Citizen is currently running! Creating or modifying links while the game is open can cause file locks. Do you want to proceed anyway?"
+                "Star Citizen / Launcher Running",
+                f"Active process detected: {proc_names}!\n\n"
+                "Creating or modifying links while Star Citizen or RSI Launcher is open "
+                "can cause file locks and corrupted installations.\n\n"
+                "Do you want to proceed anyway?"
             )
         return True
 
@@ -1101,11 +1103,25 @@ Hover over any button, badge or metric in this app to see what it does.
     # --- UI Helpers ---
 
     def _on_browse(self):
-        selected = filedialog.askdirectory(title="Select Star Citizen Directory")
-        if selected:
-            self.path_entry.delete(0, "end")
-            self.path_entry.insert(0, selected)
-            self._refresh_all()
+        TooltipManager.hide()
+        TooltipManager.set_enabled(False)
+        self.after(50, self._do_browse)
+
+    def _do_browse(self):
+        try:
+            initial_dir = self.sc_root if self.sc_root and os.path.isdir(self.sc_root) else os.path.expanduser("~")
+            selected = filedialog.askdirectory(
+                parent=self,
+                title="Select Star Citizen Directory",
+                initialdir=initial_dir,
+            )
+            if selected:
+                self.path_entry.delete(0, "end")
+                self.path_entry.insert(0, selected)
+                self._refresh_all()
+        finally:
+            TooltipManager.hide()
+            self.after(200, lambda: TooltipManager.set_enabled(True))
 
     def _on_auto_detect(self):
         installs = detect_all_sc_installations()
@@ -1128,11 +1144,16 @@ Hover over any button, badge or metric in this app to see what it does.
             messagebox.showerror("Elevation Failed", "Could not restart as Administrator. User cancelled UAC prompt.")
 
     def _open_in_explorer(self, path: str):
-        if os.path.exists(path):
-            if os.path.isfile(path):
-                subprocess.Popen(f'explorer /select,"{os.path.abspath(path)}"')
+        if not path or not os.path.exists(path):
+            return
+        abs_p = os.path.abspath(path)
+        try:
+            if os.path.isfile(abs_p):
+                subprocess.Popen(f'explorer /select,"{abs_p}"')
             else:
-                subprocess.Popen(f'explorer "{os.path.abspath(path)}"')
+                os.startfile(abs_p)
+        except Exception:
+            subprocess.Popen(f'explorer "{abs_p}"')
 
     def _launch_rsi(self):
         exe = detect_rsi_launcher_exe()

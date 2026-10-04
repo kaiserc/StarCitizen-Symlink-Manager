@@ -6,6 +6,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 # Add project root to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -27,6 +28,7 @@ from src.core.channel_mgr import (
     scan_all_channels,
     calculate_storage_stats,
     parse_build_manifest,
+    apply_independent_live_preset,
 )
 from src.core.keybind_mgr import (
     discover_control_files,
@@ -137,6 +139,57 @@ class TestCore(unittest.TestCase):
 
         procs = get_running_sc_processes()
         print("[TEST] Running SC processes:", procs)
+
+    def test_junction_prefix_stripping(self):
+        """Verifies that Win32 NT junction prefixes (\\??\\, \\\\?\\, \\??/, \\\\?/) are properly stripped."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dummy_target = os.path.join(tmpdir, "LIVE")
+            os.makedirs(dummy_target, exist_ok=True)
+            dummy_link = os.path.join(tmpdir, "PTU")
+
+            # Test NT device prefix \??\
+            with patch("os.path.islink", return_value=True), \
+                 patch("os.readlink", return_value=f"\\??\\{dummy_target}"):
+                info = inspect_path(dummy_link)
+                self.assertEqual(info["target_raw"], dummy_target)
+                self.assertEqual(info["target_abs"], os.path.normpath(dummy_target))
+
+            # Test Win32 file namespace prefix \\?\
+            with patch("os.path.islink", return_value=True), \
+                 patch("os.readlink", return_value=f"\\\\?\\{dummy_target}"):
+                info = inspect_path(dummy_link)
+                self.assertEqual(info["target_raw"], dummy_target)
+                self.assertEqual(info["target_abs"], os.path.normpath(dummy_target))
+
+            # Test forward-slash variants \??/ and \\?/
+            with patch("os.path.islink", return_value=True), \
+                 patch("os.readlink", return_value=f"\\??/{dummy_target}"):
+                info = inspect_path(dummy_link)
+                self.assertEqual(info["target_raw"], dummy_target)
+
+            with patch("os.path.islink", return_value=True), \
+                 patch("os.readlink", return_value=f"\\\\?/{dummy_target}"):
+                info = inspect_path(dummy_link)
+                self.assertEqual(info["target_raw"], dummy_target)
+
+    def test_independent_preset_protects_linked_ptu(self):
+        """Verifies that apply_independent_live_preset does not throw away a linked PTU if no real test base exists."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            live_dir = os.path.join(tmpdir, "LIVE")
+            os.makedirs(live_dir, exist_ok=True)
+            ptu_dir = os.path.join(tmpdir, "PTU")
+
+            # Create PTU as link pointing to LIVE
+            ok, _, _ = create_link_auto(live_dir, ptu_dir)
+            self.assertTrue(ok)
+
+            # Applying independent preset without a real testbed base should abort with [ERROR] and NOT delete/unlink PTU
+            logs = apply_independent_live_preset(tmpdir)
+            has_error = any("[ERROR]" in l for l in logs)
+            self.assertTrue(has_error, "Should report [ERROR] when PTU is a link and no real testbed exists")
+            # Verify PTU link is still intact
+            info = inspect_path(ptu_dir)
+            self.assertTrue(info["is_link"], "PTU link should remain intact, not deleted or converted to an empty folder")
 
 
 if __name__ == "__main__":

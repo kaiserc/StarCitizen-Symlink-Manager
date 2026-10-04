@@ -5,6 +5,10 @@ Supports both interactive GUI mode and scriptable CLI mode.
 
 import os
 import sys
+
+# Ensure COM Single Threaded Apartment (STA) mode on Windows for native file dialogs
+sys.coinit_flags = 2
+
 import argparse
 
 # Add project root to sys.path
@@ -20,6 +24,7 @@ from src.core.channel_mgr import (
 )
 from src.core.keybind_mgr import backup_controls, list_backups
 from src.core.shader_mgr import clear_shader_caches, clean_user_cache_safe
+from src.core.process_guard import get_running_sc_processes
 
 
 def run_cli(args):
@@ -48,6 +53,24 @@ def run_cli(args):
             link_info = f"-> {ch['target_raw']}" if ch["is_link"] else "(Real Folder)"
             ver = ch["version_info"].get("branch", "N/A")
             print(f"  [{ch['link_type']:8}] {name:15} {link_info:20} (Branch: {ver})")
+
+    if args.preset:
+        procs = get_running_sc_processes()
+        if procs:
+            proc_names = ", ".join(sorted(set(p["name"] for p in procs)))
+            print(f"\n[WARNING] Active Star Citizen / RSI Launcher process detected: {proc_names}")
+            print("Modifying channel links while the game or launcher is open can cause file locks and corrupted installations.")
+            if not args.force:
+                try:
+                    ans = input("Do you want to proceed anyway? [y/N]: ").strip().lower()
+                    if ans != "y":
+                        print("[ABORT] Operation cancelled by user.")
+                        sys.exit(1)
+                except (EOFError, KeyboardInterrupt):
+                    print("\n[ABORT] Operation cancelled.")
+                    sys.exit(1)
+            else:
+                print("[NOTICE] Continuing because --force was specified.")
 
     if args.preset == "reddit":
         print("\nApplying Reddit Method (Unified Base)...")
@@ -86,6 +109,7 @@ def main():
     parser.add_argument("--backup-controls", action="store_true", help="Take a 1-click backup of all keybinding/control files")
     parser.add_argument("--clean-shaders", action="store_true", help="Clean shader caches in LocalAppData")
     parser.add_argument("--keep-latest-shaders", action="store_true", help="Retain newest shader cache folder when cleaning")
+    parser.add_argument("--force", action="store_true", help="Bypass process guard confirmation in CLI mode")
 
     args = parser.parse_args()
 

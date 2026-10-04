@@ -307,16 +307,27 @@ def apply_independent_live_preset(sc_root: str, test_base_name: str = "PTU", pre
 
     test_base_path = os.path.join(sc_root, test_base_name)
 
-    # If test base is currently a link, we need a real directory
+    # Determine or verify the test base directory
     if test_base_name in channels and channels[test_base_name]["is_link"]:
-        safe_unlink(test_base_path)
-
-    # Ensure test base exists as a real directory
-    if not os.path.exists(test_base_path):
+        # If PTU is currently a link, check if an existing real master base directory exists (e.g. Game)
         if "Game" in channels and channels["Game"]["link_type"] == "real_dir":
             test_base_path = os.path.join(sc_root, "Game")
             test_base_name = "Game"
-            logs.append(f"[INFO] Using existing 'Game' as test base.")
+            logs.append(f"[INFO] Using existing real directory 'Game' as test base.")
+        else:
+            target_disp = channels[test_base_name].get("target_raw", "another folder")
+            logs.append(
+                f"[ERROR] '{test_base_name}' is currently a link pointing to '{target_disp}'. "
+                f"An independent testbed requires a separate real installation folder. "
+                f"Aborting preset to prevent creating an empty test directory. "
+                f"Please install/verify {test_base_name} in the RSI Launcher first or rename a real test folder to '{test_base_name}'."
+            )
+            return logs
+    elif not os.path.exists(test_base_path):
+        if "Game" in channels and channels["Game"]["link_type"] == "real_dir":
+            test_base_path = os.path.join(sc_root, "Game")
+            test_base_name = "Game"
+            logs.append(f"[INFO] Using existing real directory 'Game' as test base.")
         else:
             os.makedirs(test_base_path, exist_ok=True)
             logs.append(f"[SETUP] Created new test base directory '{test_base_name}'.")
