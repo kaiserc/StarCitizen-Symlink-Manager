@@ -161,18 +161,58 @@ def detect_all_sc_installations() -> List[str]:
 
 
 def detect_rsi_launcher_exe() -> Optional[str]:
-    """Finds the RSI Launcher executable path if installed."""
-    candidates = [
-        r"C:\Program Files\Roberts Space Industries\RSI Launcher\RSI Launcher.exe",
-        r"D:\Program Files\Roberts Space Industries\RSI Launcher\RSI Launcher.exe",
-    ]
-    # Also check local app data
+    """Finds the RSI Launcher executable path if installed across all drives or registry."""
+    candidates = []
+
+    # 1. Check all logical drive letters for standard install directories
+    try:
+        bitmask = ctypes.windll.kernel32.GetLogicalDrives()
+        for letter in string.ascii_uppercase:
+            if bitmask & 1:
+                candidates.append(f"{letter}:\\Program Files\\Roberts Space Industries\\RSI Launcher\\RSI Launcher.exe")
+                candidates.append(f"{letter}:\\Roberts Space Industries\\RSI Launcher\\RSI Launcher.exe")
+                candidates.append(f"{letter}:\\Games\\RSI Launcher\\RSI Launcher.exe")
+            bitmask >>= 1
+    except Exception:
+        candidates.extend([
+            r"C:\Program Files\Roberts Space Industries\RSI Launcher\RSI Launcher.exe",
+            r"D:\Program Files\Roberts Space Industries\RSI Launcher\RSI Launcher.exe",
+        ])
+
+    # 2. Check LocalAppData (Electron / RSI Launcher 2.0 user install)
     localapp = os.environ.get("LOCALAPPDATA", "")
     if localapp:
         candidates.append(os.path.join(localapp, "Programs", "RSI Launcher", "RSI Launcher.exe"))
 
+    # 3. Check Windows Registry uninstall keys
+    try:
+        import winreg
+        for hkey in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+            for sub in (
+                r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\rsi-launcher",
+                r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\rsi-launcher",
+                r"SOFTWARE\Roberts Space Industries\RSI Launcher",
+            ):
+                try:
+                    with winreg.OpenKey(hkey, sub) as key:
+                        for val_name in ("DisplayIcon", "InstallLocation", "Path", ""):
+                            try:
+                                val, _ = winreg.QueryValueEx(key, val_name)
+                                if val:
+                                    clean_val = val.strip('"\'' )
+                                    if clean_val.lower().endswith(".exe"):
+                                        candidates.insert(0, clean_val)
+                                    else:
+                                        candidates.insert(0, os.path.join(clean_val, "RSI Launcher.exe"))
+                            except FileNotFoundError:
+                                pass
+                except FileNotFoundError:
+                    pass
+    except Exception:
+        pass
+
     for c in candidates:
-        if os.path.isfile(c):
+        if c and os.path.isfile(c):
             return os.path.normpath(c)
 
     return None

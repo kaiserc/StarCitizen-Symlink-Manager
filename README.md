@@ -58,8 +58,10 @@ When switching between channels in the RSI Launcher, clicking **"Verify Files"**
 
 ## 🖥️ How to Run
 
-### Option 1: Double-Click Launcher (Recommended for Source Checkouts)
-Double-click `run.bat` in the project root. It will automatically check Python, install required dependencies, and launch the application.
+### Option 1: Quick Launchers (Recommended for Source Checkouts)
+- **Windows Command Prompt / Double-Click**: Double-click `run.bat`
+- **Windows PowerShell**: Run `.\run.ps1` or `.\run.bat`
+Both scripts automatically check Python, install required dependencies, and launch the application.
 
 ### Option 2: Build Standalone Windows Executable (.exe)
 Run `build_exe.bat` in the repository root. PyInstaller will compile a zero-dependency standalone executable into:

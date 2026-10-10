@@ -2,6 +2,7 @@
 components.py - Reusable CustomTkinter UI widgets for Star Citizen Symlink Manager.
 """
 
+import tkinter as tk
 import customtkinter as ctk
 from typing import Callable, Dict, Any, List, Optional, Sequence
 
@@ -146,13 +147,199 @@ class StorageMetricCard(HudPanel):
         if subtitle:
             self.subtitle_lbl.configure(text=subtitle)
 
-        if tip_key:
-            add_tip(self, tip_key, extra_widgets=(self.title_lbl, self.value_lbl, self.subtitle_lbl))
 
-    def update_values(self, value: str, subtitle: str = None):
-        self.value_lbl.configure(text=value)
-        if subtitle:
-            self.subtitle_lbl.configure(text=subtitle)
+class StorageEfficiencyVisualizer(HudPanel):
+    """
+    Sleek mobiGlas HUD storage allocation visualizer showing physical disk
+    consumption vs virtual space mapped by symlinks with smooth ease-out animation.
+    """
+
+    def __init__(self, master, **kwargs):
+        super().__init__(master, accent=COLOR_ACCENT, **kwargs)
+        self._current_phys_pct = 0.0
+        self._target_phys_pct = 0.0
+        self._current_saved_pct = 0.0
+        self._target_saved_pct = 0.0
+        self._anim_job = None
+
+        self._build_ui()
+
+    def _build_ui(self):
+        container = ctk.CTkFrame(self, fg_color="transparent")
+        container.pack(fill="x", padx=(18, 14), pady=(10, 10))
+
+        # 1. Top row: Section title + Efficiency Multiplier Badge
+        top_row = ctk.CTkFrame(container, fg_color="transparent")
+        top_row.pack(fill="x", pady=(0, 6))
+
+        ctk.CTkLabel(
+            top_row,
+            text="STORAGE ALLOCATION & VIRTUAL MAPPING",
+            font=FONT_SECTION,
+            text_color=COLOR_TEXT_SECONDARY,
+        ).pack(side="left")
+
+        self.badge_lbl = ctk.CTkLabel(
+            top_row,
+            text="0% SAVED · 1.0x MULTIPLIER",
+            font=FONT_SMALL_BOLD,
+            text_color=COLOR_SUCCESS,
+            fg_color=COLOR_SUCCESS_BG,
+            corner_radius=4,
+            padx=10,
+            pady=2,
+            height=24,
+        )
+        self.badge_lbl.pack(side="right")
+        add_tip(self.badge_lbl, "storage_visualizer")
+
+        # 2. Middle bar: Canvas with custom rendering
+        self.canvas = tk.Canvas(
+            container,
+            height=22,
+            bg=COLOR_BG_INPUT,
+            bd=0,
+            highlightthickness=1,
+            highlightbackground=COLOR_CARD_BORDER,
+        )
+        self.canvas.pack(fill="x", pady=(2, 8))
+        self.canvas.bind("<Configure>", lambda e: self._redraw())
+        add_tip(self.canvas, "storage_visualizer")
+
+        # 3. Bottom Legend / Detail row
+        legend_row = ctk.CTkFrame(container, fg_color="transparent")
+        legend_row.pack(fill="x")
+
+        # Column 1: Physical
+        c1 = ctk.CTkFrame(legend_row, fg_color="transparent")
+        c1.pack(side="left", padx=(0, 20))
+        dot1 = ctk.CTkFrame(c1, fg_color=COLOR_ACCENT, width=8, height=8, corner_radius=4)
+        dot1.pack(side="left", padx=(0, 6))
+        self.lbl_phys = ctk.CTkLabel(
+            c1,
+            text="Physical Footprint: -- GB",
+            font=FONT_SMALL,
+            text_color=COLOR_TEXT_PRIMARY,
+        )
+        self.lbl_phys.pack(side="left")
+
+        # Column 2: Saved
+        c2 = ctk.CTkFrame(legend_row, fg_color="transparent")
+        c2.pack(side="left", padx=(0, 20))
+        dot2 = ctk.CTkFrame(c2, fg_color=COLOR_SUCCESS, width=8, height=8, corner_radius=4)
+        dot2.pack(side="left", padx=(0, 6))
+        self.lbl_saved = ctk.CTkLabel(
+            c2,
+            text="Virtual Mapped / Saved: -- GB",
+            font=FONT_SMALL,
+            text_color=COLOR_SUCCESS,
+        )
+        self.lbl_saved.pack(side="left")
+
+        # Column 3: Total playable
+        c3 = ctk.CTkFrame(legend_row, fg_color="transparent")
+        c3.pack(side="right")
+        dot3 = ctk.CTkFrame(c3, fg_color=COLOR_TEXT_MUTED, width=8, height=8, corner_radius=4)
+        dot3.pack(side="left", padx=(0, 6))
+        self.lbl_total = ctk.CTkLabel(
+            c3,
+            text="Virtual Total: -- GB",
+            font=FONT_SMALL,
+            text_color=COLOR_TEXT_MUTED,
+        )
+        self.lbl_total.pack(side="right")
+
+    def update_storage(self, physical_gb: float, virtual_gb: float, saved_gb: float):
+        """Updates storage numbers and triggers smooth animation of the allocation bar."""
+        if virtual_gb <= 0:
+            phys_pct = 0.0
+            saved_pct = 0.0
+            multiplier = 1.0
+        else:
+            phys_pct = min(100.0, max(0.0, (physical_gb / virtual_gb) * 100.0))
+            saved_pct = min(100.0, max(0.0, (saved_gb / virtual_gb) * 100.0))
+            multiplier = round(virtual_gb / physical_gb, 1) if physical_gb > 0 else 1.0
+
+        self.lbl_phys.configure(text=f"Physical Footprint: {physical_gb:.1f} GB ({phys_pct:.0f}%)")
+        self.lbl_saved.configure(text=f"Virtual Mapped / Saved: ~{saved_gb:.1f} GB ({saved_pct:.0f}%)")
+        self.lbl_total.configure(text=f"Virtual Playable Space: {virtual_gb:.1f} GB")
+
+        badge_txt = f"{saved_pct:.1f}% SAVED · {multiplier:.1f}x SSD MULTIPLIER" if saved_gb > 0 else "100% PHYSICAL · 1.0x MULTIPLIER"
+        badge_fg = COLOR_SUCCESS if saved_gb > 0 else COLOR_TEXT_SECONDARY
+        badge_bg = COLOR_SUCCESS_BG if saved_gb > 0 else COLOR_BTN
+        self.badge_lbl.configure(text=badge_txt, text_color=badge_fg, fg_color=badge_bg)
+
+        self._target_phys_pct = phys_pct
+        self._target_saved_pct = saved_pct
+
+        self._start_animation()
+
+    def _start_animation(self):
+        if self._anim_job is not None:
+            try:
+                self.after_cancel(self._anim_job)
+            except Exception:
+                pass
+            self._anim_job = None
+        self._step_animation()
+
+    def _step_animation(self):
+        # Smooth exponential approach (ease-out)
+        diff_p = self._target_phys_pct - self._current_phys_pct
+        diff_s = self._target_saved_pct - self._current_saved_pct
+
+        if abs(diff_p) < 0.2 and abs(diff_s) < 0.2:
+            self._current_phys_pct = self._target_phys_pct
+            self._current_saved_pct = self._target_saved_pct
+            self._redraw()
+            self._anim_job = None
+            return
+
+        self._current_phys_pct += diff_p * 0.22
+        self._current_saved_pct += diff_s * 0.22
+        self._redraw()
+        self._anim_job = self.after(16, self._step_animation)
+
+    def _redraw(self):
+        self.canvas.delete("all")
+        w = self.canvas.winfo_width()
+        h = self.canvas.winfo_height()
+        if w <= 10 or h <= 4:
+            return
+
+        # Background track
+        self.canvas.create_rectangle(0, 0, w, h, fill=COLOR_BG_INPUT, outline="")
+
+        total_pct = self._current_phys_pct + self._current_saved_pct
+        if total_pct <= 0:
+            return
+
+        phys_w = int((self._current_phys_pct / 100.0) * w)
+        saved_w = int((self._current_saved_pct / 100.0) * w)
+
+        # 1. Physical bar (Cyber Cyan)
+        if phys_w > 0:
+            self.canvas.create_rectangle(0, 0, phys_w, h, fill=COLOR_ACCENT, outline="")
+
+        # 2. Virtual Saved bar (Emerald Green)
+        if saved_w > 0:
+            x_start = phys_w
+            x_end = min(w, phys_w + saved_w)
+            self.canvas.create_rectangle(x_start, 0, x_end, h, fill=COLOR_SUCCESS, outline="")
+
+            # Subtle futuristic diagonal hatches across saved segment
+            step = 14
+            for x in range(x_start - h, x_end + step, step):
+                self.canvas.create_line(
+                    max(x_start, x), h,
+                    min(x_end, x + h), 0,
+                    fill="#156447",
+                    width=2
+                )
+
+        # Subtle divider hairline between physical and virtual if both exist
+        if phys_w > 0 and saved_w > 0:
+            self.canvas.create_line(phys_w, 0, phys_w, h, fill="#04080F", width=2)
 
 
 class ChannelCard(HudPanel):

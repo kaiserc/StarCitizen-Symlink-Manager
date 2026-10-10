@@ -58,6 +58,12 @@ TIPS = {
         "Each working link saves roughly one full install (~100-150 GB). "
         "'Virtual' is how much space you would need without links.",
     ),
+    "storage_visualizer": (
+        "Storage Allocation & Virtual Mapping",
+        "Visual breakdown of your physical Star Citizen SSD storage vs virtual space mapped by symlinks.\n\n"
+        "• Cyan bar: Physical SSD blocks consumed by actual game data.\n"
+        "• Striped Green bar: Hundreds of gigabytes saved through delta symlinks & junctions.",
+    ),
 
     # --- Presets --------------------------------------------------------------
     "preset_reddit": (

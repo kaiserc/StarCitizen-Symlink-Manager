@@ -92,6 +92,7 @@ from .theme import (
 )
 from .components import (
     StorageMetricCard,
+    StorageEfficiencyVisualizer,
     ChannelCard,
     LogConsole,
     HudPanel,
@@ -386,7 +387,11 @@ class SCSymlinkManagerApp(ctk.CTk):
         )
         self.metric_saved.pack(side="left", fill="x", expand=True, padx=(6, 0))
 
-        # 2. Presets Action Bar
+        # 2. Storage Allocation & Virtual Mapping Visualizer (with animation)
+        self.visualizer = StorageEfficiencyVisualizer(tab)
+        self.visualizer.pack(fill="x", pady=(0, 10))
+
+        # 3. Presets Action Bar
         SectionLabel(tab, "Quick Presets", help_key="preset_backup_note").pack(fill="x", pady=(0, 6))
 
         btn_row = ctk.CTkFrame(tab, fg_color="transparent")
@@ -645,6 +650,14 @@ Hover over any button, badge or metric in this app to see what it does.
             self.chip_storage_lbl.configure(text=f"{stats['active_channels']} CHANNELS ACTIVE")
             self.chip_storage_sub.configure(text=f"~{stats['saved_gb']} GB SAVED")
 
+        # Update Visual Storage Allocation Bar (with smooth ease-out animation)
+        if hasattr(self, "visualizer"):
+            self.visualizer.update_storage(
+                stats["physical_used_gb"],
+                stats["virtual_total_gb"],
+                stats["saved_gb"],
+            )
+
         # Update Preset Highlights
         self._update_preset_highlights(self.channels_data)
 
@@ -808,6 +821,7 @@ Hover over any button, badge or metric in this app to see what it does.
 
         self.console.log("[PRESET] Applying Reddit Method (Unified Game Base)...")
         def task():
+            self._auto_backup_before_preset()
             logs = apply_reddit_preset(self.sc_root, prefer_symlink=self.prefer_symlink)
             self.after(0, lambda: self._on_preset_done(logs))
         threading.Thread(target=task, daemon=True).start()
@@ -833,6 +847,7 @@ Hover over any button, badge or metric in this app to see what it does.
 
         self.console.log("[PRESET] Applying Independent LIVE + Shared Test preset...")
         def task():
+            self._auto_backup_before_preset()
             logs = apply_independent_live_preset(self.sc_root, prefer_symlink=self.prefer_symlink)
             self.after(0, lambda: self._on_preset_done(logs))
         threading.Thread(target=task, daemon=True).start()
@@ -857,9 +872,20 @@ Hover over any button, badge or metric in this app to see what it does.
 
         self.console.log("[PRESET] Applying Direct Link to LIVE...")
         def task():
+            self._auto_backup_before_preset()
             logs = apply_direct_live_preset(self.sc_root, prefer_symlink=self.prefer_symlink)
             self.after(0, lambda: self._on_preset_done(logs))
         threading.Thread(target=task, daemon=True).start()
+
+    def _auto_backup_before_preset(self):
+        """Creates a safety backup of controls before applying presets."""
+        try:
+            ok, msg, _ = backup_controls(self.sc_root, self.backups_dir)
+            if ok:
+                self.after(0, lambda: self.console.log(f"[BACKUP] Safety snapshot created: {msg}"))
+                self.after(0, self._refresh_backups_list)
+        except Exception:
+            pass
 
     def _on_preset_done(self, logs):
         for line in logs:
@@ -892,7 +918,13 @@ Hover over any button, badge or metric in this app to see what it does.
             return
 
         self.console.log("[BACKUP] Backing up keybinding and control files...")
-        ok, msg, manifest = backup_controls(self.sc_root, self.backups_dir)
+        def task():
+            ok, msg, manifest = backup_controls(self.sc_root, self.backups_dir)
+            self.after(0, lambda: self._on_backup_done(ok, msg))
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def _on_backup_done(self, ok: bool, msg: str):
         if ok:
             self.console.log(f"[SUCCESS] {msg}")
             messagebox.showinfo("Backup Succeeded", msg)
